@@ -69,14 +69,17 @@ sudo decryptbinary -i <bundle_id>
 - Jailbroken iOS device
   - **Rootful :** MobileSubstrate
   - **Rootless :** ElleKit
+- **zip** (for IPA creation with `-i` option)
 
-> **Note:** If you don't have the required tweak injection framework installed, you can install it via terminal:
+> **Note:** If you don't have the required packages installed, you can install them via terminal:
 > ```bash
 > # For Rootful (MobileSubstrate)
 > apt install mobilesubstrate
+> apt install zip
 >
 > # For Rootless (ElleKit)
 > sudo apt install ellekit
+> sudo apt install zip
 > ```
 
 ### Build Requirements
