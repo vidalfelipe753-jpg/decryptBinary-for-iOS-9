@@ -10,6 +10,28 @@ extern int proc_pidpath(int pid, void *buffer, uint32_t buffersize);
 
 extern char **environ;
 
+// Get bundle ID from Info.plist in app bundle
+static NSString* getBundleIDFromPath(NSString *appPath) {
+    // Extract .app bundle path
+    NSRange appRange = [appPath rangeOfString:@".app/"];
+    if (appRange.location == NSNotFound) {
+        appRange = [appPath rangeOfString:@".app"];
+        if (appRange.location == NSNotFound) {
+            return nil;
+        }
+    }
+
+    NSString *bundlePath = [appPath substringToIndex:appRange.location + appRange.length];
+    NSString *infoPlistPath = [bundlePath stringByAppendingPathComponent:@"Info.plist"];
+
+    NSDictionary *infoPlist = [NSDictionary dictionaryWithContentsOfFile:infoPlistPath];
+    if (infoPlist) {
+        return infoPlist[@"CFBundleIdentifier"];
+    }
+
+    return nil;
+}
+
 // Get all running processes
 static NSArray* getRunningProcesses() {
     NSMutableArray *processes = [NSMutableArray array];
@@ -47,6 +69,12 @@ static NSArray* getRunningProcesses() {
                         info[@"name"] = appName;
                         break;
                     }
+                }
+
+                // Get bundle ID from Info.plist
+                NSString *bundleID = getBundleIDFromPath(path);
+                if (bundleID) {
+                    info[@"bundleID"] = bundleID;
                 }
 
                 [processes addObject:info];
@@ -142,13 +170,14 @@ static BOOL launchAppByBundleID(NSString *bundleID) {
 static void listApps() {
     NSArray *processes = getRunningProcesses();
 
-    printf("%-8s %-20s %s\n", "PID", "Name", "Path");
-    printf("--------------------------------------------------------------------------------\n");
+    printf("%-8s %-25s %-40s %s\n", "PID", "Name", "Bundle ID", "Path");
+    printf("----------------------------------------------------------------------------------------------------\n");
 
     for (NSDictionary *proc in processes) {
-        printf("%-8d %-20s %s\n",
+        printf("%-8d %-25s %-40s %s\n",
                [proc[@"pid"] intValue],
                [proc[@"name"] UTF8String] ?: "unknown",
+               [proc[@"bundleID"] UTF8String] ?: "N/A",
                [proc[@"path"] UTF8String]);
     }
 
