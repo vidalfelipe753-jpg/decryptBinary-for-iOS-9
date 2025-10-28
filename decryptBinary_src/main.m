@@ -72,6 +72,18 @@ static NSArray* getRunningProcesses() {
 - (BOOL)openApplicationWithBundleID:(NSString *)bundleID;
 @end
 
+// Check if running in rootless environment
+static BOOL isRootlessEnvironment(void) {
+    // Check if /var/jb exists (rootless jailbreak marker)
+    struct stat st;
+    return (stat("/var/jb", &st) == 0 && S_ISDIR(st.st_mode));
+}
+
+// Get shell path based on environment
+static const char* getShellPath(void) {
+    return isRootlessEnvironment() ? "/var/jb/bin/sh" : "/bin/sh";
+}
+
 // Load MobileCoreServices framework and return handle
 static void* loadMobileCoreServices(void) {
     void *handle = dlopen("/System/Library/Frameworks/MobileCoreServices.framework/MobileCoreServices", RTLD_LAZY);
@@ -143,18 +155,114 @@ static void listApps() {
     printf("\n");
 }
 
+// Create IPA from decrypted binary
+static BOOL createIPA(NSString *bundlePath, NSString *decryptedBinaryPath, NSString *executableName, NSString *outputDir, NSString *appName) {
+    NSFileManager *fileManager = [NSFileManager defaultManager];
+    NSError *error = nil;
+
+    // Create temporary Payload directory
+    NSString *tempDir = [NSTemporaryDirectory() stringByAppendingPathComponent:[[NSUUID UUID] UUIDString]];
+    NSString *payloadDir = [tempDir stringByAppendingPathComponent:@"Payload"];
+
+    if (![fileManager createDirectoryAtPath:payloadDir withIntermediateDirectories:YES attributes:nil error:&error]) {
+        printf("[!] Error: Cannot create Payload directory: %s\n", [[error localizedDescription] UTF8String]);
+        return NO;
+    }
+
+    // Copy .app bundle to Payload directory
+    NSString *appBundleName = [bundlePath lastPathComponent];
+    NSString *destAppPath = [payloadDir stringByAppendingPathComponent:appBundleName];
+
+    printf("[*] Copying app bundle to temporary directory...\n");
+    if (![fileManager copyItemAtPath:bundlePath toPath:destAppPath error:&error]) {
+        printf("[!] Error: Cannot copy app bundle: %s\n", [[error localizedDescription] UTF8String]);
+        [fileManager removeItemAtPath:tempDir error:nil];
+        return NO;
+    }
+
+    // Replace original binary with decrypted one
+    NSString *originalBinaryPath = [destAppPath stringByAppendingPathComponent:executableName];
+
+    printf("[*] Replacing binary with decrypted version...\n");
+    if ([fileManager fileExistsAtPath:originalBinaryPath]) {
+        if (![fileManager removeItemAtPath:originalBinaryPath error:&error]) {
+            printf("[!] Error: Cannot remove original binary: %s\n", [[error localizedDescription] UTF8String]);
+            [fileManager removeItemAtPath:tempDir error:nil];
+            return NO;
+        }
+    }
+
+    if (![fileManager copyItemAtPath:decryptedBinaryPath toPath:originalBinaryPath error:&error]) {
+        printf("[!] Error: Cannot copy decrypted binary: %s\n", [[error localizedDescription] UTF8String]);
+        [fileManager removeItemAtPath:tempDir error:nil];
+        return NO;
+    }
+
+    // Set executable permissions
+    NSDictionary *attrs = @{NSFilePosixPermissions: @0755};
+    if (![fileManager setAttributes:attrs ofItemAtPath:originalBinaryPath error:&error]) {
+        printf("[!] Warning: Cannot set executable permissions: %s\n", [[error localizedDescription] UTF8String]);
+    }
+
+    // Create IPA (zip file)
+    NSString *ipaPath = [NSString stringWithFormat:@"%@/%@.ipa", outputDir, appName];
+
+    printf("[*] Creating IPA archive...\n");
+
+    // Use zip command to create IPA (IPA is just a zip file)
+    // We need to cd into tempDir first, then zip the Payload folder
+    BOOL rootless = isRootlessEnvironment();
+    const char *shellPath = getShellPath();
+    const char *zipPath = rootless ? "/var/jb/usr/bin/zip" : "/usr/bin/zip";
+
+    printf("[*] Environment: %s\n", rootless ? "Rootless" : "Rootful");
+
+    pid_t pid;
+    const char *args[] = {
+        shellPath,
+        "-c",
+        [[NSString stringWithFormat:@"cd '%@' && '%s' -qr '%@' Payload",
+          tempDir, zipPath, ipaPath] UTF8String],
+        NULL
+    };
+
+    if (posix_spawn(&pid, shellPath, NULL, NULL, (char *const *)args, environ) == 0) {
+        int status;
+        waitpid(pid, &status, 0);
+
+        if (WIFEXITED(status) && WEXITSTATUS(status) == 0) {
+            printf("[+] IPA created successfully: %s\n", [ipaPath UTF8String]);
+
+            // Clean up temporary directory
+            [fileManager removeItemAtPath:tempDir error:nil];
+            return YES;
+        } else {
+            printf("[!] Error: zip command failed with status %d\n", WEXITSTATUS(status));
+        }
+    } else {
+        printf("[!] Error: Cannot spawn zip process\n");
+    }
+
+    // Clean up temporary directory
+    [fileManager removeItemAtPath:tempDir error:nil];
+    return NO;
+}
+
 // Print usage
 static void printUsage() {
     printf("decryptbin - iOS App Binary Decryption Tool\n\n");
     printf("Usage:\n");
     printf("  decryptbin -l                List running apps\n");
     printf("  decryptbin -d <BundleID>   Dump binary (bundle ID)\n");
+    printf("  decryptbin -i <BundleID>   Dump binary and create IPA (bundle ID)\n");
     printf("  decryptbin -h                Show this help\n\n");
     printf("Examples:\n");
     printf("  decryptbin -l\n");
     printf("  decryptbin -d com.apple.mobilesafari\n");
+    printf("  decryptbin -i com.apple.mobilesafari\n");
     printf("Output:\n");
-    printf("  Decrypted binary will be saved to: <data_directory>/Documents/<appname>.decrypted\n\n");
+    printf("  -d: Decrypted binary will be saved to: <data_directory>/Documents/<appname>.decrypted\n");
+    printf("  -i: IPA will be saved to: <data_directory>/Documents/<appname>.ipa\n\n");
 }
 
 int main(int argc, char *argv[]) {
@@ -175,8 +283,11 @@ int main(int argc, char *argv[]) {
             // List apps
             listApps();
 
-        } else if ([option isEqualToString:@"-d"] || [option isEqualToString:@"--dump"]) {
-            // Dump by identifier
+        } else if ([option isEqualToString:@"-d"] || [option isEqualToString:@"--dump"] ||
+                   [option isEqualToString:@"-i"] || [option isEqualToString:@"--ipa"]) {
+            // Dump by identifier or create IPA
+            BOOL createIPAFile = [option isEqualToString:@"-i"] || [option isEqualToString:@"--ipa"];
+
             if (argc < 3) {
                 printf("[!] Error: Missing app identifier\n");
                 printUsage();
@@ -192,6 +303,11 @@ int main(int argc, char *argv[]) {
             }
 
             printf("[*] Target Bundle ID: %s\n", [bundleID UTF8String]);
+            if (createIPAFile) {
+                printf("[*] Mode: Create IPA\n");
+            } else {
+                printf("[*] Mode: Dump binary only\n");
+            }
 
             // Print app information using LSApplicationProxy
             NSString *executableName = nil;
@@ -215,7 +331,7 @@ int main(int argc, char *argv[]) {
                     return 1;
                 }
 
-                appName = appProxy.localizedName; 
+                appName = appProxy.localizedName;
                 if (!appName) {
                     NSString *lastComponent = [bundlePath lastPathComponent];
                     if (lastComponent) {
@@ -235,19 +351,19 @@ int main(int argc, char *argv[]) {
                     return 1;
                 }
                 printf("[*] Executable Name: %s\n", [executableName UTF8String]);
-                
+
                 dataDirectory = [[appProxy.dataContainerURL path] stringByStandardizingPath];
                 if (!dataDirectory) {
                     printf("[!] Error: Data directory not found or inaccessible\n");
                     return 1;
                 }
                 printf("[*] Data Directory: %s\n", [dataDirectory UTF8String]);
-                
+
             } else {
                 printf("[!] Error: Could not get application proxy for %s\n", [bundleID UTF8String]);
                 return 1;
             }
-            
+
             // Close the framework handle
             dlclose(handle);
 
@@ -293,7 +409,17 @@ int main(int argc, char *argv[]) {
                                           dataDirectory, appName];
 
                 if ([[NSFileManager defaultManager] fileExistsAtPath:decryptedPath]) {
-                    printf("[+] Success: %s\n", [decryptedPath UTF8String]);
+
+                    // Create IPA if requested
+                    if (createIPAFile) {
+                        printf("\n[*] Creating IPA file...\n");
+                        NSString *outputDir = [NSString stringWithFormat:@"%@/Documents", dataDirectory];
+                        if (!createIPA(bundlePath, decryptedPath, executableName, outputDir, appName)) {
+                            printf("[!] Error: Failed to create IPA\n");
+                        }
+                    } else {
+                        printf("[+] Success: %s\n", [decryptedPath UTF8String]);
+                    }
                 } else {
                     printf("[!] Error: Failed to dump app binary\n");
                     printf("[*] Expected output: %s\n", [decryptedPath UTF8String]);

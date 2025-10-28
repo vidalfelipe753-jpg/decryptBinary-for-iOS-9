@@ -13,6 +13,7 @@
 
 - List all running applications
 - Decrypt application binaries with ease
+- Create IPA files with decrypted binaries
 - Target specific apps by bundle ID
 - Support for both rootful and rootless jailbreaks
 
@@ -36,12 +37,30 @@ decryptbinary -d <bundle_id>
 sudo decryptbinary -d <bundle_id>
 ```
 
+### Create IPA File
+
+Extract the entire app as an IPA file with decrypted binary:
+
+**Rootful Jailbreak:**
+```bash
+decryptbinary -i <bundle_id>
+```
+
+**Rootless Jailbreak:**
+```bash
+sudo decryptbinary -i <bundle_id>
+```
+
 ## Output Location
 
-Decrypted binaries are automatically saved to:
-
+**Decrypted binaries:**
 ```
 <app_data_directory>/Documents/<app_name>.decrypted
+```
+
+**IPA files (when using -i option):**
+```
+<app_data_directory>/Documents/<app_name>.ipa
 ```
 
 ## Requirements
@@ -57,7 +76,7 @@ Decrypted binaries are automatically saved to:
 > apt install mobilesubstrate
 >
 > # For Rootless (ElleKit)
-> apt install ellekit
+> sudo apt install ellekit
 > ```
 
 ### Build Requirements
