@@ -1,10 +1,10 @@
 Package: com.merona.decryptbinary
 Name: decryptBinary
-Version: 1.0.0
+Version: 1.0.1
 Architecture: iphoneos-arm
 Description: iOS app binary & IPA decryption tool.
 Maintainer: merona
 Author: merona
 Section: System
 Tag: role::developer, purpose::security
-Depends: mobilesubstrate, firmware (>= 14.0), zip
+Depends: mobilesubstrate, firmware (>= 13.0), zip

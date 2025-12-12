@@ -13,13 +13,11 @@ static NSString* getCurrentBundleID() {
     return bundleID;
 }
 
-static NSString* getCurrentAppName() {
+static NSString* getExecutableName() {
     NSBundle *mainBundle = [NSBundle mainBundle];
-    NSString *appName = [mainBundle objectForInfoDictionaryKey:@"CFBundleDisplayName"];
-    if (!appName) {
-        appName = [mainBundle objectForInfoDictionaryKey:@"CFBundleName"];
-    }
-    return appName;
+    // Use CFBundleExecutable for consistent naming
+    NSString *execName = [mainBundle objectForInfoDictionaryKey:@"CFBundleExecutable"];
+    return execName;
 }
 
 static NSString* getOutputPath() {
@@ -28,7 +26,7 @@ static NSString* getOutputPath() {
     if (paths.count > 0) {
         NSString *documentsPath = paths[0];
         NSLog(@"[DecryptBinary] Using Documents path: %@", documentsPath);
-        return [NSString stringWithFormat:@"%@/%@.decrypted", documentsPath, getCurrentAppName()];
+        return [NSString stringWithFormat:@"%@/%@.decrypted", documentsPath, getExecutableName()];
     }
 
     return nil;
@@ -179,11 +177,11 @@ static void onImageLoaded(const struct mach_header *header, intptr_t slide) {
 
 %ctor {
     NSString *bundleID = getCurrentBundleID();
-    NSString *appName = getCurrentAppName();
+    NSString *execName = getExecutableName();
 
     NSLog(@"[DecryptBinary] ======= TWEAK LOADED =======");
     NSLog(@"[DecryptBinary] PID: %d", getpid());
-    NSLog(@"[DecryptBinary] App Name: %@", appName);
+    NSLog(@"[DecryptBinary] Executable Name: %@", execName);
     NSLog(@"[DecryptBinary] Bundle ID: %@", bundleID);
 
     _dyld_register_func_for_add_image(onImageLoaded);

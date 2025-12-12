@@ -32,7 +32,7 @@ decryptbinary -l
 decryptbinary -d <bundle_id>
 ```
 
-**Rootless Jailbreak:**
+**Rootless Jailbreak (sudo required):**
 ```bash
 sudo decryptbinary -d <bundle_id>
 ```
@@ -46,10 +46,12 @@ Extract the entire app as an IPA file with decrypted binary:
 decryptbinary -i <bundle_id>
 ```
 
-**Rootless Jailbreak:**
+**Rootless Jailbreak (sudo required):**
 ```bash
 sudo decryptbinary -i <bundle_id>
 ```
+
+> **Note:** On rootless jailbreaks, `sudo` is required to write the tweak injection filter file.
 
 ## Output Location
 

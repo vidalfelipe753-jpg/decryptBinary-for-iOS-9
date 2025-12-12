@@ -409,7 +409,14 @@ int main(int argc, char *argv[]) {
             };
 
             if (![filter writeToFile:plistPath atomically:YES]) {
-                printf("[!] Error: Cannot write plist filter file\n");
+                printf("[!] Error: Cannot write plist filter file: %s\n", [plistPath UTF8String]);
+                printf("[!] Permission denied. ");
+                if (isRootlessEnvironment()) {
+                    printf("In rootless environment, please run with sudo:\n");
+                    printf("    sudo decryptbinary %s %s\n", argv[1], argv[2]);
+                } else {
+                    printf("Please check file permissions.\n");
+                }
                 return 1;
             }
 
@@ -433,9 +440,8 @@ int main(int argc, char *argv[]) {
                 // Wait 2 seconds for the tweak to dump the binary
                 sleep(2);
 
-                // Check if the decrypted binary was created
                 NSString *decryptedPath = [NSString stringWithFormat:@"%@/Documents/%@.decrypted",
-                                          dataDirectory, appName];
+                                          dataDirectory, executableName];
 
                 if ([[NSFileManager defaultManager] fileExistsAtPath:decryptedPath]) {
 
@@ -465,6 +471,7 @@ int main(int argc, char *argv[]) {
 
             if (![filter writeToFile:plistPath atomically:YES]) {
                 printf("[!] Warning: Cannot reset plist filter file\n");
+                printf("[!] The filter may remain active for the app. Run with sudo to reset properly.\n");
             }
 
         } else if ([option isEqualToString:@"-h"] || [option isEqualToString:@"--help"]) {
