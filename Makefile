@@ -1,4 +1,4 @@
-ARCHS := arm64 arm64e
+ARCHS := arm64
 TARGET := iphone:clang:latest:14.0
 
 THEOS_LEAN_AND_MEAN = 1
